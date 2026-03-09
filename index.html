@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RAG Simulator</title>
+<style>
+
+body{
+font-family: Inter, system-ui, -apple-system, sans-serif;
+background:#0f172a;
+color:white;
+margin:0;
+padding:40px;
+}
+
+h1{
+text-align:center;
+margin-bottom:30px;
+}
+
+.container{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:25px;
+max-width:1200px;
+margin:auto;
+}
+
+.card{
+background:#1e293b;
+padding:20px;
+border-radius:12px;
+box-shadow:0 10px 20px rgba(0,0,0,.3);
+}
+
+.card h2{
+margin-top:0;
+font-size:18px;
+}
+
+textarea,input{
+width:100%;
+background:#0f172a;
+border:1px solid #334155;
+border-radius:8px;
+color:white;
+padding:10px;
+margin-top:10px;
+}
+
+button{
+margin-top:12px;
+padding:10px 16px;
+border:none;
+background:#6366f1;
+color:white;
+border-radius:8px;
+cursor:pointer;
+}
+
+button:hover{
+background:#818cf8;
+}
+
+.step{
+margin-top:15px;
+padding:12px;
+background:#0f172a;
+border-radius:8px;
+font-size:14px;
+}
+
+.vector{
+font-family:monospace;
+font-size:12px;
+color:#38bdf8;
+}
+
+.doc{
+background:#0f172a;
+padding:10px;
+border-radius:8px;
+margin-top:8px;
+font-size:14px;
+}
+
+.highlight{
+border-left:4px solid #22c55e;
+}
+
+.flow{
+text-align:center;
+font-size:14px;
+margin:15px 0;
+color:#94a3b8;
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>RAG Simulator</h1>
+
+<div class="container">
+
+<div class="card">
+
+<h2>Knowledge Base</h2>
+
+<textarea id="docInput" rows="3" placeholder="Add document text"></textarea>
+<button onclick="addDoc()">Add Document</button>
+
+<div id="docs"></div>
+
+</div>
+
+<div class="card">
+
+<h2>User Query</h2>
+
+<input id="queryInput" placeholder="Ask a question..."/>
+
+<button onclick="runRAG()">Run RAG Pipeline</button>
+
+<div class="flow">Query → Embedding → Vector Search → Context → LLM</div>
+
+<div id="steps"></div>
+
+</div>
+
+</div>
+
+<script>
+
+const vocabulary = [
+"ai","machine","learning","model","data",
+"bank","payment","finance","fraud","money",
+"book","author","story","read","audio"
+]
+
+let docs=[]
+
+function embed(text){
+
+let words=text.toLowerCase().split(/\W+/)
+
+return vocabulary.map(v=>{
+let count=words.filter(w=>w===v).length
+return count
+})
+
+}
+
+function cosine(a,b){
+
+let dot=0
+let magA=0
+let magB=0
+
+for(let i=0;i<a.length;i++){
+
+dot+=a[i]*b[i]
+magA+=a[i]*a[i]
+magB+=b[i]*b[i]
+
+}
+
+magA=Math.sqrt(magA)
+magB=Math.sqrt(magB)
+
+if(magA===0||magB===0) return 0
+
+return dot/(magA*magB)
+
+}
+
+function addDoc(){
+
+let text=document.getElementById("docInput").value
+
+if(!text) return
+
+let vector=embed(text)
+
+docs.push({
+text,
+vector
+})
+
+renderDocs()
+
+document.getElementById("docInput").value=""
+
+}
+
+function renderDocs(){
+
+let el=document.getElementById("docs")
+el.innerHTML=""
+
+docs.forEach(d=>{
+
+let div=document.createElement("div")
+div.className="doc"
+
+div.innerHTML=`
+${d.text}
+<div class="vector">[${d.vector.join(", ")}]</div>
+`
+
+el.appendChild(div)
+
+})
+
+}
+
+function runRAG(){
+
+let query=document.getElementById("queryInput").value
+
+let steps=document.getElementById("steps")
+steps.innerHTML=""
+
+let qVec=embed(query)
+
+steps.innerHTML+=`
+<div class="step">
+<b>1. Query Embedding</b>
+<div class="vector">[${qVec.join(", ")}]</div>
+</div>
+`
+
+let scored=docs.map(d=>({
+...d,
+score:cosine(qVec,d.vector)
+}))
+
+scored.sort((a,b)=>b.score-a.score)
+
+let retrieved=scored.slice(0,2)
+
+steps.innerHTML+=`
+<div class="step">
+<b>2. Vector Search</b>
+Top matches retrieved from vector DB
+</div>
+`
+
+retrieved.forEach(d=>{
+
+steps.innerHTML+=`
+<div class="doc highlight">
+${d.text}
+<div class="vector">similarity: ${d.score.toFixed(3)}</div>
+</div>
+`
+
+})
+
+let context=retrieved.map(d=>d.text).join("\n")
+
+let prompt=`
+Answer the question using context.
+
+Context:
+${context}
+
+Question:
+${query}
+`
+
+steps.innerHTML+=`
+<div class="step">
+<b>3. Prompt Sent to LLM</b>
+<pre>${prompt}</pre>
+</div>
+`
+
+let answer=generateAnswer(query,context)
+
+steps.innerHTML+=`
+<div class="step">
+<b>4. Generated Answer</b>
+${answer}
+</div>
+`
+
+}
+
+function generateAnswer(query,context){
+
+if(context==="") return "No context found."
+
+return `Based on retrieved documents: ${context.slice(0,150)}...`
+
+}
+
+</script>
+
+</body>
+</html>
