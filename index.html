@@ -3,10 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <title>RAG Simulator</title>
+
 <style>
 
+*{
+box-sizing:border-box;
+}
+
 body{
-font-family: Inter, system-ui, -apple-system, sans-serif;
+font-family: Inter, system-ui, -apple-system;
 background:#0f172a;
 color:white;
 margin:0;
@@ -15,22 +20,28 @@ padding:40px;
 
 h1{
 text-align:center;
-margin-bottom:30px;
+margin-bottom:10px;
+}
+
+.subtitle{
+text-align:center;
+color:#94a3b8;
+margin-bottom:40px;
 }
 
 .container{
+max-width:1200px;
+margin:auto;
 display:grid;
 grid-template-columns:1fr 1fr;
 gap:25px;
-max-width:1200px;
-margin:auto;
 }
 
 .card{
 background:#1e293b;
+border-radius:14px;
 padding:20px;
-border-radius:12px;
-box-shadow:0 10px 20px rgba(0,0,0,.3);
+box-shadow:0 10px 25px rgba(0,0,0,0.3);
 }
 
 .card h2{
@@ -43,37 +54,23 @@ width:100%;
 background:#0f172a;
 border:1px solid #334155;
 border-radius:8px;
-color:white;
 padding:10px;
+color:white;
 margin-top:10px;
 }
 
 button{
-margin-top:12px;
-padding:10px 16px;
-border:none;
+margin-top:10px;
 background:#6366f1;
-color:white;
+border:none;
+padding:10px 16px;
 border-radius:8px;
+color:white;
 cursor:pointer;
 }
 
 button:hover{
 background:#818cf8;
-}
-
-.step{
-margin-top:15px;
-padding:12px;
-background:#0f172a;
-border-radius:8px;
-font-size:14px;
-}
-
-.vector{
-font-family:monospace;
-font-size:12px;
-color:#38bdf8;
 }
 
 .doc{
@@ -84,15 +81,45 @@ margin-top:8px;
 font-size:14px;
 }
 
-.highlight{
-border-left:4px solid #22c55e;
+.pipeline{
+grid-column:1 / span 2;
+display:flex;
+justify-content:space-between;
+margin-top:20px;
+flex-wrap:wrap;
 }
 
-.flow{
+.step{
+background:#1e293b;
+padding:14px;
+border-radius:10px;
+width:12%;
 text-align:center;
-font-size:14px;
-margin:15px 0;
-color:#94a3b8;
+font-size:13px;
+}
+
+.step.active{
+border:2px solid #22c55e;
+}
+
+.arrow{
+text-align:center;
+font-size:22px;
+color:#64748b;
+margin:0 5px;
+}
+
+.answer{
+grid-column:1 / span 2;
+margin-top:20px;
+}
+
+pre{
+white-space:pre-wrap;
+font-size:13px;
+background:#020617;
+padding:12px;
+border-radius:8px;
 }
 
 </style>
@@ -101,6 +128,7 @@ color:#94a3b8;
 <body>
 
 <h1>RAG Simulator</h1>
+<p class="subtitle">Understand Retrieval Augmented Generation step-by-step</p>
 
 <div class="container">
 
@@ -108,7 +136,7 @@ color:#94a3b8;
 
 <h2>Knowledge Base</h2>
 
-<textarea id="docInput" rows="3" placeholder="Add document text"></textarea>
+<textarea id="docInput" rows="3" placeholder="Add document"></textarea>
 <button onclick="addDoc()">Add Document</button>
 
 <div id="docs"></div>
@@ -119,13 +147,39 @@ color:#94a3b8;
 
 <h2>User Query</h2>
 
-<input id="queryInput" placeholder="Ask a question..."/>
+<input id="queryInput" placeholder="Ask something...">
 
-<button onclick="runRAG()">Run RAG Pipeline</button>
+<button onclick="runRAG()">Run RAG</button>
 
-<div class="flow">Query → Embedding → Vector Search → Context → LLM</div>
+<div id="queryDisplay"></div>
 
-<div id="steps"></div>
+</div>
+
+<div class="pipeline">
+
+<div class="step" id="s1">Ingest</div>
+<div class="arrow">→</div>
+<div class="step" id="s2">Chunk</div>
+<div class="arrow">→</div>
+<div class="step" id="s3">Embed</div>
+<div class="arrow">→</div>
+<div class="step" id="s4">Store</div>
+<div class="arrow">→</div>
+<div class="step" id="s5">Query</div>
+<div class="arrow">→</div>
+<div class="step" id="s6">Retrieve</div>
+<div class="arrow">→</div>
+<div class="step" id="s7">Prompt</div>
+<div class="arrow">→</div>
+<div class="step" id="s8">Generate</div>
+
+</div>
+
+<div class="card answer">
+
+<h2>LLM Output</h2>
+
+<pre id="output">Run a query to see results</pre>
 
 </div>
 
@@ -134,9 +188,8 @@ color:#94a3b8;
 <script>
 
 const vocabulary = [
-"ai","machine","learning","model","data",
-"bank","payment","finance","fraud","money",
-"book","author","story","read","audio"
+"ai","model","data","bank","payment",
+"fraud","machine","learning","book","audio"
 ]
 
 let docs=[]
@@ -146,8 +199,7 @@ function embed(text){
 let words=text.toLowerCase().split(/\W+/)
 
 return vocabulary.map(v=>{
-let count=words.filter(w=>w===v).length
-return count
+return words.filter(w=>w===v).length
 })
 
 }
@@ -159,11 +211,9 @@ let magA=0
 let magB=0
 
 for(let i=0;i<a.length;i++){
-
 dot+=a[i]*b[i]
 magA+=a[i]*a[i]
 magB+=b[i]*b[i]
-
 }
 
 magA=Math.sqrt(magA)
@@ -178,20 +228,18 @@ return dot/(magA*magB)
 function addDoc(){
 
 let text=document.getElementById("docInput").value
-
 if(!text) return
-
-let vector=embed(text)
 
 docs.push({
 text,
-vector
+vector:embed(text)
 })
-
-renderDocs()
 
 document.getElementById("docInput").value=""
 
+renderDocs()
+
+highlight("s1")
 }
 
 function renderDocs(){
@@ -200,18 +248,18 @@ let el=document.getElementById("docs")
 el.innerHTML=""
 
 docs.forEach(d=>{
-
 let div=document.createElement("div")
 div.className="doc"
-
-div.innerHTML=`
-${d.text}
-<div class="vector">[${d.vector.join(", ")}]</div>
-`
-
+div.innerHTML=d.text
 el.appendChild(div)
-
 })
+
+}
+
+function highlight(id){
+
+document.querySelectorAll(".step").forEach(s=>s.classList.remove("active"))
+document.getElementById(id).classList.add("active")
 
 }
 
@@ -219,17 +267,11 @@ function runRAG(){
 
 let query=document.getElementById("queryInput").value
 
-let steps=document.getElementById("steps")
-steps.innerHTML=""
+document.getElementById("queryDisplay").innerHTML="<p>"+query+"</p>"
+
+highlight("s5")
 
 let qVec=embed(query)
-
-steps.innerHTML+=`
-<div class="step">
-<b>1. Query Embedding</b>
-<div class="vector">[${qVec.join(", ")}]</div>
-</div>
-`
 
 let scored=docs.map(d=>({
 ...d,
@@ -238,30 +280,15 @@ score:cosine(qVec,d.vector)
 
 scored.sort((a,b)=>b.score-a.score)
 
-let retrieved=scored.slice(0,2)
+let top=scored.slice(0,2)
 
-steps.innerHTML+=`
-<div class="step">
-<b>2. Vector Search</b>
-Top matches retrieved from vector DB
-</div>
-`
+highlight("s6")
 
-retrieved.forEach(d=>{
+let context=top.map(t=>t.text).join("\n")
 
-steps.innerHTML+=`
-<div class="doc highlight">
-${d.text}
-<div class="vector">similarity: ${d.score.toFixed(3)}</div>
-</div>
-`
+highlight("s7")
 
-})
-
-let context=retrieved.map(d=>d.text).join("\n")
-
-let prompt=`
-Answer the question using context.
+let prompt=`Use the context to answer the question.
 
 Context:
 ${context}
@@ -270,29 +297,11 @@ Question:
 ${query}
 `
 
-steps.innerHTML+=`
-<div class="step">
-<b>3. Prompt Sent to LLM</b>
-<pre>${prompt}</pre>
-</div>
-`
+highlight("s8")
 
-let answer=generateAnswer(query,context)
+let answer="Based on retrieved knowledge:\n\n"+context
 
-steps.innerHTML+=`
-<div class="step">
-<b>4. Generated Answer</b>
-${answer}
-</div>
-`
-
-}
-
-function generateAnswer(query,context){
-
-if(context==="") return "No context found."
-
-return `Based on retrieved documents: ${context.slice(0,150)}...`
+document.getElementById("output").textContent=answer
 
 }
 
